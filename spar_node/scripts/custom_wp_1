@@ -25,6 +25,10 @@ from breadcrumb.srv import RequestPathRequest
 # will call it's own functions as callbacks, etc.
 class Guidance():
 	def __init__(self, waypoints):
+		# Safe boundary values, 
+		self.safeRangeX = rospy.get_param("~safe_rangeX", 1)
+		self.safeRangeY = rospy.get_param("~safe_rangeY", 1)
+		self.safeRangeZ = rospy.get_param("~safe_rangeZ", 1)
 		# Make sure we have a valid waypoint list
 		if not self.check_waypoints(waypoints):
 			raise ArgumentError("Invalid waypoint list input!")
@@ -124,7 +128,12 @@ class Guidance():
 		if len(wp) != 4:
 			rospy.logwarn("Waypoint has an invalid length (must be X/Y/Z/Yaw)")
 			return False
-
+		
+		# Check if waypoint is inside the net
+		if abs(wp[0]) > self.safeRangeX or abs(wp[1]) > self.safeRangeY or abs(wp[2]) > self.safeRangeZ:
+			rospy.logwarn("Waypoint has an invalid size for O134 (must be -{}<X<{} |{}<Y<{}| {}<Z<{} |Yaw)".format(self.safeRangeX,self.safeRangeX,self.safeRangeY,self.safeRangeY,self.safeRangeZ,self.safeRangeZ))
+			return False
+		
 		# If we haven't returned false yet, then waypoint looks valid!
 		return True
 
@@ -132,6 +141,7 @@ class Guidance():
 	# This function will make sure we shut down the node as safely as possible
 	def shutdown(self):
 		# Unregister anything that needs it here
+		rospy.loginfo("Unregistering from topics and shutting down...")
 		self.sub_pose.unregister()
 		self.sub_roi.unregister()
 		self.spar_client.cancel_goal()
@@ -199,7 +209,9 @@ class Guidance():
 	def send_wp(self, wp):
 		# Make sure the waypoint is valid before continuing
 		if not self.check_waypoint(wp):
-			raise ArgumentError("Invalid waypoint input!")
+			rospy.logwarn("Invalid waypoint, skipped...")
+			return False
+			# raise ArgumentError("Invalid waypoint input!")
 
 		# Build the flight goal
 		goal = FlightMotionGoal()
@@ -323,16 +335,18 @@ def display_path(self, wps):
 def main(args):
 	# Initialise ROS
 	rospy.init_node('guidance')
-
+	surveyAltitude = rospy.get_param("~surveyAlt", 1)
 	# List of waypoints
-	flightAlt = 1.0
 	# [X, Y, Z, Yaw]
-	wps = [[ 0.0, 0.0, flightAlt, 0.0],
-		   [ 1.0, 1.0, flightAlt, 0.0],
-		   [-1.0, 1.0, flightAlt, 0.0],
-		   [-1.0,-1.0, flightAlt, 0.0],
-		   [ 1.0,-1.0, flightAlt, 0.0],
-		   [ 0.0, 0.0, flightAlt, 0.0]]
+	wps = [[ 0.0, 0.0, surveyAltitude, 0.0],
+		   [ 3.0, 0.0, surveyAltitude, 0.0],
+		   [ 3.0, 2.0, surveyAltitude, 0.0],
+		   [-3.0, 2.0, surveyAltitude, 0.0],
+		   [-3.0,-2.0, surveyAltitude, 0.0],
+		   [ 3.0,-2.0, surveyAltitude, 0.0],
+		   [ 3.0, 0.0, surveyAltitude, 0.0],
+		   [ 0.0, 0.0, surveyAltitude, 0.0],
+		   [ 0.0, 0.0, 0.0, 0.0]]
 
 	# Create our guidance class option
 	guide = Guidance(wps)
